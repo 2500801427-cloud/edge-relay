@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 export const config = { runtime: "nodejs" };
 export const maxDuration = 300;
 
@@ -58,10 +60,13 @@ export default async (req, res) => {
 
   try {
     // Forward the request to upstream
+    // Readable.toWeb() is required because undici's fetch does not reliably
+    // accept raw Node IncomingMessage streams as body in Vercel's serverless
+    // runtime — passing a plain `req` results in an empty body at the upstream.
     const upstreamRes = await fetch(upstream, {
       method: req.method,
       headers,
-      body: ["GET", "HEAD"].includes(req.method) ? undefined : req,
+      body: ["GET", "HEAD"].includes(req.method) ? undefined : Readable.toWeb(req),
       duplex: "half",
       redirect: "manual",
     });
