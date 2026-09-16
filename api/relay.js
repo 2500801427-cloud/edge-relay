@@ -1,7 +1,35 @@
-import { Readable } from "node:stream";
-
 export const config = { runtime: "nodejs" };
 export const maxDuration = 300;
+
+// Vercel's serverless runtime monkey-patches the inbound request
+// stream via @vercel/node's restoreBody(), which patches only
+// req.on('data'), req.on('end'), and req.read. Readable.toWeb()
+// does not read through those patched interfaces reliably and
+// produces an empty, already-closed body at the upstream — Xray
+// logs "firstLen = 0" and "invalid Read on closed Body" on every
+// connection. Constructing a ReadableStream that listens to the
+// same events Vercel patches is the only reliable way to read the
+// actual bytes. This is the same approach Vercel uses in
+// next.js to fix an identical bug (vercel/next.js commit
+// 59ebfbea). Do not replace this with Readable.toWeb().
+function nodeToWebStream(nodeStream) {
+  return new ReadableStream({
+    start(controller) {
+      nodeStream.on("data", (chunk) => {
+        controller.enqueue(new Uint8Array(chunk));
+      });
+      nodeStream.on("end", () => {
+        controller.close();
+      });
+      nodeStream.on("error", (err) => {
+        controller.error(err);
+      });
+    },
+    cancel(reason) {
+      nodeStream.destroy(reason);
+    },
+  });
+}
 
 export default async (req, res) => {
   // Read and validate UPSTREAM_BASE
@@ -60,13 +88,10 @@ export default async (req, res) => {
 
   try {
     // Forward the request to upstream
-    // Readable.toWeb() is required because undici's fetch does not reliably
-    // accept raw Node IncomingMessage streams as body in Vercel's serverless
-    // runtime — passing a plain `req` results in an empty body at the upstream.
     const upstreamRes = await fetch(upstream, {
       method: req.method,
       headers,
-      body: ["GET", "HEAD"].includes(req.method) ? undefined : Readable.toWeb(req),
+      body: ["GET", "HEAD"].includes(req.method) ? undefined : nodeToWebStream(req),
       duplex: "half",
       redirect: "manual",
     });
