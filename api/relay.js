@@ -20,7 +20,11 @@ export default async (req, res) => {
   // that after a rewrite, req.url is not guaranteed to match the original
   // request URL. Finding the first "?" is the only stable approach.
   const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-  const upstream = `${base}/vless${qs}`;
+  // Trailing slash after "vless" is required by Xray's XHTTP path matching.
+  // Xray normalizes all configured paths to end with "/" and validates incoming
+  // requests using HasPrefix(requestPath, configPath). A request to "/vless" does
+  // not match the configured "/vless/" — do not remove this slash.
+  const upstream = `${base}/vless/${qs}`;
 
   // Get the upstream hostname
   const targetHost = new URL(base).host;
