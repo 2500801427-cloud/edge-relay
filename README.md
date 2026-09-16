@@ -37,7 +37,7 @@ vercel --prod
 
 ## Platform Limits
 
-**Execution timeout.** Vercel's Node.js functions on the Hobby tier have a 10-second default execution timeout. `maxDuration = 60` in `api/relay.js` raises this to 60 seconds, which is the Hobby maximum. Any response still streaming at the 60-second mark is terminated mid-stream by the platform. This relay cannot hold a connection open longer than 60 seconds on Hobby. For longer connections, the Pro tier raises the cap to 300 seconds.
+**Execution timeout.** Vercel's Node.js functions under Fluid Compute (available on all plans including Hobby) have a default and maximum execution duration of 300 seconds. `maxDuration = 300` in `api/relay.js` sets the handler to the platform maximum. Any response still streaming at the 300-second mark is terminated mid-stream by the platform.
 
 **Billing model.** Vercel bills Node functions on wall-clock GB-hours — memory allocated × duration the function instance is alive, regardless of how much CPU the code actually uses. An idle stream waiting on I/O still consumes GB-hours at the function's configured memory. The Hobby tier includes 100 GB-hours per month. This is not a "CPU-hour" budget; idle time is not free.
 
@@ -45,7 +45,7 @@ vercel --prod
 
 **Edge runtime.** Not used here, but for reference: the Edge runtime has a 25–30 second timeout on Hobby. It is also unsuitable for persistent streams, and cannot stream request bodies the way Node can.
 
-**Verdict.** This relay works for request-scoped proxying where each invocation completes under 60 seconds. It does not work for persistent tunnels on the Hobby tier.
+**Verdict.** This relay works for request-scoped proxying where each invocation completes under 300 seconds. It does not work for persistent tunnels.
 
 ## Gotchas
 
@@ -55,4 +55,4 @@ vercel --prod
 - The runtime must be `nodejs`, not `edge`.
 - `req.url` after a Vercel rewrite is not guaranteed to match the original request URL. The relay extracts the query string by finding the first `?` rather than assuming a path prefix. Do not "fix" this to use a path-based extraction.
 - `duplex: "half"` is required when passing a stream as body to fetch. Removing it causes a runtime error on every non-GET request.
-- `maxDuration = 60` is the Hobby ceiling. Setting it higher has no effect on the free plan.
+- `maxDuration = 300` is the platform ceiling. Vercel enforces this on all plans under Fluid Compute.
